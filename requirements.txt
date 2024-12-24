@@ -1,0 +1,14 @@
+flask
+dash
+dash-bootstrap-components
+dash-leaflet
+geopandas
+shapely
+pandas
+numpy
+requests
+census
+ftplib
+zipfile
+python-dotenv
+openai
