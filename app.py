@@ -7,6 +7,7 @@ import dash_leaflet as dl
 import geopandas as gpd
 from shapely.geometry import Point
 import util
+import base64
 import pandas as pd
 import census_lib as cl
 import json
@@ -159,7 +160,25 @@ dash_app.layout = dbc.Container(
                                 ],
                                 className="d-flex align-items-center mt-3"  # Use flexbox for layout
                             ),
-
+                            dcc.Upload(
+                                id='geojson-upload',
+                                children=html.Div([
+                                    'Upload GeoJSON: Drag and Drop or ',
+                                    html.A('Select Files')
+                                ]),
+                                style={
+                                    'width': '100%',
+                                    'height': '60px',
+                                    'lineHeight': '60px',
+                                    'borderWidth': '1px',
+                                    'borderStyle': 'dashed',
+                                    'borderRadius': '5px',
+                                    'textAlign': 'center',
+                                    'margin': '10px'
+                                },
+                                # Allow multiple files to be uploaded
+                                multiple=False
+                            ),
                             dbc.Button("Get Data", id="get-data-button", color="primary", className="mt-3"),
                         ]
                     ),
@@ -345,6 +364,7 @@ def make_geojson_circle(lat, lng, radius_meters):
     Output("geo-json-store", "data"),
     [
         Input('add-point-button', 'n_clicks'),
+        Input('geojson-upload', 'contents'),
         Input({'type': 'save-point-button', 'index': dash.dependencies.ALL}, 'n_clicks'),
         Input({'type': 'remove-point-button', 'index': dash.dependencies.ALL}, 'n_clicks')
     ],
@@ -359,7 +379,7 @@ def make_geojson_circle(lat, lng, radius_meters):
     ],
     prevent_initial_call=True
 )
-def handle_points(add_clicks, save_clicks, remove_point_clicks, geo_json, point_name, clickData, radius, unit, names, remove_ids):
+def handle_points(add_clicks, contents, save_clicks, remove_point_clicks, geo_json, point_name, clickData, radius, unit, names, remove_ids):
     ctx = callback_context
     if not ctx.triggered:
         return geo_json
@@ -375,6 +395,35 @@ def handle_points(add_clicks, save_clicks, remove_point_clicks, geo_json, point_
             new_feature = make_geojson_circle(lat, lng, radius_meters)
             new_feature["properties"]["name"] = point_name.strip() if point_name else f"Point {len(geo_json['features']) + 1}"
             geo_json['features'].append(new_feature)
+
+    elif triggered_id == 'geojson-upload':
+        if contents is None:
+            raise PreventUpdate
+
+        content_type, content_string = contents.split(',')
+        decoded = base64.b64decode(content_string)
+        new_geo_json = json.loads(decoded)
+        if 'features' not in new_geo_json or not new_geo_json['features']:
+            raise PreventUpdate
+        for i, feature in enumerate(new_geo_json['features']):
+            if 'geometry' not in feature:
+                raise PreventUpdate
+            if 'type' not in feature['geometry']:
+                raise PreventUpdate
+            if 'coordinates' not in feature['geometry']:
+                raise PreventUpdate
+            if feature["geometry"]["type"] == "Point":
+                if 'properties' not in feature:
+                    feature['properties'] = {
+                        "name": f"Uploaded Point {i + 1}",
+                        "radius": 5000
+                    }
+                if 'radius' not in feature['properties']:
+                    feature['properties']['radius'] = 5000
+                if 'name' not in feature['properties']:
+                    feature['properties']['name'] = f"Uploaded Point {i + 1}"
+        geo_json['features'] += new_geo_json['features']
+        return geo_json
 
     else:
         button_id = json.loads(triggered_id)
@@ -408,6 +457,7 @@ def update_circles_layer(geo_json):
         if feature['geometry']['type'] == 'Point':
             lng, lat = feature['geometry']['coordinates']
             radius = feature['properties']['radius']
+            name = feature['properties']['name']
             circle_layer.append(
                 dl.Circle(
                     center=(lat, lng),
@@ -416,6 +466,13 @@ def update_circles_layer(geo_json):
                     fill=True, 
                     fillOpacity=0.1
                 )
+            )
+            print(name)
+            circle_layer.append(
+                dl.Marker(
+                    position=[lat, lng],
+                    children=[dl.Tooltip(content=name)]
+                ) 
             )
     return circle_layer
 
@@ -617,6 +674,7 @@ def sync_radius_inputs(slider_value, input_value, unit):
     elif triggered_id == 'unit-toggle':
         return slider_value, slider_value, max_value, marks
     raise PreventUpdate
+
 
 if __name__ == "__main__":
     app.run(debug=True)
