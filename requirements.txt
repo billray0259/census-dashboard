@@ -8,7 +8,6 @@ pandas
 numpy
 requests
 census
-ftplib
 zipfile
 python-dotenv
 openai
