@@ -37,8 +37,8 @@ def aggregate_blockgroups(table, block_group_gdf):
     
     vars = variables(table)
     rows = [
-        {'UCGID': ucgid, 'VarID': key, 'Variable': vars[key]['label'].replace('!!', ' '), 'Value': value}
-        for ucgid, (key, value) in zip(ucgids, data.items())
+        {'VarID': key, 'Variable': vars[key]['label'].replace('!!', ' '), 'Value': value}
+        for key, value in data.items()
     ]
     
     df = pd.DataFrame(rows).dropna(how='all')
