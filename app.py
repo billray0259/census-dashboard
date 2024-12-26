@@ -32,6 +32,11 @@ with open('data/2023_tables.json', 'r') as f:
 tables_2023_df = pd.DataFrame(tables_2023)
 tables_2023_embeddings = np.load('data/2023_table_embeddings.npy')
 
+BLANK_GEOJSON = {
+    "type": "FeatureCollection",
+    "features": []
+}
+
 # Define the layout of the Dash app
 dash_app.layout = dbc.Container(
     [
@@ -230,7 +235,7 @@ dash_app.layout = dbc.Container(
         dcc.Download(id="download-dataframe-csv"),
         dcc.Store(id="state-storage"),  # Store object to store state
         dcc.Store(id="table-data-storage"),
-        dcc.Store(id="points-store", data=[]),   # List of points of interest
+        dcc.Store(id="geo-json-store", data=BLANK_GEOJSON),  # Store for GeoJSON data
         dcc.Store(id="search-output"),  # Store for search results
     ],
     fluid=True,
@@ -319,22 +324,32 @@ def make_geo_circle(lat, lng, radius_meters):
     
     point = Point(lng, lat)
     projected_point = gpd.GeoSeries([point], crs=4326).to_crs(epsg=utm_epsg).iloc[0]
-    
     # Create a circle around the click point with the selected radius
     circle = projected_point.buffer(radius_meters)  # Radius in meters
-    
     return circle
 
+def make_geojson_circle(lat, lng, radius_meters):
+    geo_json = {
+        "type": "Feature",
+        "geometry": {
+            "type": "Point",
+            "coordinates": [lng, lat]
+        },
+        "properties": {
+            "radius": radius_meters
+        }
+    }
+    return geo_json
 # Add a new combined callback to handle adding, saving, and removing points
 @dash_app.callback(
-    Output('points-store', 'data'),
+    Output("geo-json-store", "data"),
     [
         Input('add-point-button', 'n_clicks'),
         Input({'type': 'save-point-button', 'index': dash.dependencies.ALL}, 'n_clicks'),
         Input({'type': 'remove-point-button', 'index': dash.dependencies.ALL}, 'n_clicks')
     ],
     [
-        State('points-store', 'data'),
+        State('geo-json-store', 'data'),
         State('poi-name-input', 'value'),
         State('map', 'clickData'),
         State('radius-slider', 'value'),  # Add radius state
@@ -344,10 +359,10 @@ def make_geo_circle(lat, lng, radius_meters):
     ],
     prevent_initial_call=True
 )
-def handle_points(add_clicks, save_clicks, remove_point_clicks, points, point_name, clickData, radius, unit, names, remove_ids):
+def handle_points(add_clicks, save_clicks, remove_point_clicks, geo_json, point_name, clickData, radius, unit, names, remove_ids):
     ctx = callback_context
     if not ctx.triggered:
-        return points
+        return geo_json
 
     triggered = ctx.triggered[0]
     triggered_id = triggered['prop_id'].split('.')[0]
@@ -357,43 +372,51 @@ def handle_points(add_clicks, save_clicks, remove_point_clicks, points, point_na
             lat = float(clickData['latlng']['lat'])
             lng = float(clickData['latlng']['lng'])
             radius_meters = radius * 1609.34 if unit == 'miles' else radius * 1000  # Convert to meters
-            new_point = {
-                'name': point_name.strip() if point_name else f"Point {len(points)+1}",
-                'lat': lat,
-                'lng': lng,
-                'radius': radius_meters  # Store radius in meters
-            }
-            points.append(new_point)
+            new_feature = make_geojson_circle(lat, lng, radius_meters)
+            new_feature["properties"]["name"] = point_name.strip() if point_name else f"Point {len(geo_json['features']) + 1}"
+            geo_json['features'].append(new_feature)
+
     else:
         button_id = json.loads(triggered_id)
         if button_id['type'] == 'save-point-button':
             index = button_id['index']
             if names[index]:
-                points[index]['name'] = names[index].strip()
                 radius_meters = radius * 1609.34 if unit == 'miles' else radius * 1000  # Convert to meters
-                points[index]['radius'] = radius_meters  # Update radius in meters
+                lat = geo_json["features"][index]["geometry"]["coordinates"][1]
+                lng = geo_json["features"][index]["geometry"]["coordinates"][0]
+                updated_feature = make_geojson_circle(lat, lng, radius_meters)
+                updated_feature["properties"]["name"] = names[index].strip()
+                updated_feature["properties"]["radius"] = radius_meters
+                print(names[index].strip())
+                geo_json['features'][index] = updated_feature
+        
         elif button_id['type'] == 'remove-point-button':
             index = button_id['index']
-            if 0 <= index < len(points):
-                points.pop(index)
-    return points
+            if 0 <= index < len(geo_json['features']):
+                geo_json['features'].pop(index)
+    return geo_json
 
 @dash_app.callback(
     Output("prev-circle-layer", "children"),
-    [Input("points-store", "data")],
+    [  
+        Input("geo-json-store", "data")
+    ],
 )
-def update_circles_layer(points):
+def update_circles_layer(geo_json):
     circle_layer = []
-    for p in points:
-        circle_layer.append(
-            dl.Circle(
-                center=(p['lat'], p['lng']),
-                radius=p['radius'],  # Radius is already in meters
-                color='green', 
-                fill=True, 
-                fillOpacity=0.1
+    for feature in geo_json['features']:
+        if feature['geometry']['type'] == 'Point':
+            lng, lat = feature['geometry']['coordinates']
+            radius = feature['properties']['radius']
+            circle_layer.append(
+                dl.Circle(
+                    center=(lat, lng),
+                    radius=radius,  # Radius is already in meters
+                    color='green', 
+                    fill=True, 
+                    fillOpacity=0.1
+                )
             )
-        )
     return circle_layer
 
 @dash_app.callback(
@@ -404,14 +427,14 @@ def update_circles_layer(points):
     ],
     [Input("get-data-button", "n_clicks")],
     [
-        State("points-store", "data"),
+        State("geo-json-store", "data"),
         State("table-input", "value")
     ],
     prevent_initial_call=True
 )
-def search_census(_, points, table_codes_input):
-    if not points:
-        return html.Div("No points defined."), []
+def search_census(_, geo_json_data, table_codes_input):
+    if len(geo_json_data['features']) == 0:
+        return html.Div("No Features defined."), []
 
     table_codes = [tc.strip() for tc in table_codes_input.split(',') if tc.strip()]
 
@@ -421,9 +444,12 @@ def search_census(_, points, table_codes_input):
     final_list = []
     final_block_groups = []
 
-    for p in points:
-        lat, lng = float(p['lat']), float(p['lng'])
-        radius_meters = p['radius']  # Radius is already in meters
+    for feature in geo_json_data['features']:
+        if feature['geometry']['type'] != 'Point':
+            return html.Div("Invalid GeoJSON data."), []
+        # lng, lat = float(feature['lat']), float(p['lng'])
+        lng, lat = feature['geometry']['coordinates']
+        radius_meters = feature["properties"]['radius']  # Radius is already in meters
         utm_epsg = util.get_utm_epsg(lat, lng)
     
         point = Point(lng, lat)
@@ -468,7 +494,8 @@ def search_census(_, points, table_codes_input):
             data_df = cl.aggregate_blockgroups(table_code, block_group_gdf)  # Use table_code from input
             data_df["Value"] = data_df["Value"].apply(lambda x: f"{round(x):,}" if pd.notna(x) else "")
             data_df = data_df[data_df["VarID"].str.endswith("E")]
-            data_df['point_name'] = p['name']
+            print(feature['properties']['name'])
+            data_df['point_name'] = feature['properties']['name']
             final_list.append(data_df)
 
         # geojson_data = block_group_gdf.__geo_interface__
@@ -534,16 +561,18 @@ def download_data(n_clicks, table_data):
 # Callback to display the list of points with edit and remove buttons
 @dash_app.callback(
     Output('points-list', 'children'),
-    Input('points-store', 'data')
+    [
+        Input('geo-json-store', 'data')
+    ]
 )
-def display_points(points):
+def display_points(geo_json):
     return [
         dbc.InputGroup(
             [
                 dbc.Input(
                     id={'type': 'point-name-input', 'index': i},
                     type='text',
-                    value=point['name'],
+                    value=feature['properties']['name'],
                 ),
                 dbc.Button(
                     "Save",
@@ -560,7 +589,7 @@ def display_points(points):
             ],
             className='list-group-item d-flex align-items-center'
         )
-        for i, point in enumerate(points)
+        for i, feature in enumerate(geo_json['features'])
     ]
 
 @dash_app.callback(
