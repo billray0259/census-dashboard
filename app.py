@@ -26,6 +26,8 @@ states_gdf = gpd.read_file(shapefile_path)
 
 # Convert GeoDataFrame to GeoJSON format
 states_geojson = states_gdf.to_json()
+# 5 miles
+DEFAULT_RADIUS = 5 * 1609.34
 
 with open('data/2023_tables.json', 'r') as f:
     tables_2023 = json.load(f)
@@ -406,22 +408,23 @@ def handle_points(add_clicks, contents, save_clicks, remove_point_clicks, geo_js
         if 'features' not in new_geo_json or not new_geo_json['features']:
             raise PreventUpdate
         for i, feature in enumerate(new_geo_json['features']):
-            if 'geometry' not in feature:
-                raise PreventUpdate
-            if 'type' not in feature['geometry']:
-                raise PreventUpdate
-            if 'coordinates' not in feature['geometry']:
-                raise PreventUpdate
             if feature["geometry"]["type"] == "Point":
                 if 'properties' not in feature:
                     feature['properties'] = {
                         "name": f"Uploaded Point {i + 1}",
-                        "radius": 5000
+                        "radius": DEFAULT_RADIUS
                     }
                 if 'radius' not in feature['properties']:
-                    feature['properties']['radius'] = 5000
+                    feature['properties']['radius'] = DEFAULT_RADIUS
                 if 'name' not in feature['properties']:
                     feature['properties']['name'] = f"Uploaded Point {i + 1}"
+            else:
+                # just insert feature as is
+                if "properties" not in feature:
+                    feature["properties"] = {}
+                if "name" not in feature["properties"]:
+                    feature["properties"]["name"] = f"Uploaded Feature {i + 1}"
+                geo_json['features'].append(feature)
         geo_json['features'] += new_geo_json['features']
         return geo_json
 
