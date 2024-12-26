@@ -177,26 +177,13 @@ def search_table(n_clicks, query):
 def display_coordinates_and_state(clickData, radius):
     click_output = "Click on the map to get coordinates."
     circle_layer = []
-    highlight_layer = dash.no_update
-    data_table = dash.no_update  # Initialize data_table
 
     if clickData is not None:
         lat, lng = float(clickData['latlng']['lat']), float(clickData['latlng']['lng'])
-        utm_epsg = util.get_utm_epsg(lat, lng)
-        
         radius_meters = radius * 1609.34  # Convert miles to meters
-        utm_epsg = util.get_utm_epsg(lat, lng)
-    
-        point = Point(lng, lat)
-        projected_point = gpd.GeoSeries([point], crs=4326).to_crs(epsg=utm_epsg).iloc[0]
-        
-        # Create a circle around the click point with the selected radius
-        circle = projected_point.buffer(radius_meters)  # Radius in meters
-        
         dl_circle = dl.Circle(center=(lat, lng), radius=radius_meters,  # Radius in meters
                            color='red', fill=True, fillOpacity=0)
         circle_layer = [dl_circle]
-    
         click_output = f"Latitude: {lat:.6f}, Longitude: {lng:.6f}"
         
     return click_output, circle_layer
@@ -265,12 +252,13 @@ def search_census(_, clickData, radius, table_code):
     
     print(f'Number of block groups: {len(block_group_gdf)}')
     data_df = cl.aggregate_blockgroups(table_code, block_group_gdf)  # Use table_code from input
-    print(f'Number of rows in data_df: {len(data_df)}')
+    
     # format data_df['Value'] as comma-separated integers
     data_df['Value'] = data_df['Value'].apply(lambda x: f'{round(x):,}' if pd.notna(x) else '')
     
     # remove rows where not VarID.endswith('E')
     data_df = data_df[data_df['VarID'].str.endswith('E')]
+    print(f'Number of rows in data_df: {len(data_df)}')
     
     # Create a DataTable from the dataframe
     data_table = dash_table.DataTable(
