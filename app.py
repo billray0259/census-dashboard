@@ -40,12 +40,6 @@ dash_app.layout = dbc.Container(
             )
         ),
         dbc.Row(
-            dbc.Col(
-                html.P("Welcome to the Census Dashboard!", className="text-center"),
-                width=12
-            )
-        ),
-        dbc.Row(
             [
                 dbc.Col(
                     dcc.Input(
@@ -209,6 +203,9 @@ def make_geo_circle(lat, lng, radius_meters):
     [State("table-input", "value")]
 )
 def search_census(_, clickData, radius, table_code):
+    if clickData is None:
+        return dash.no_update, []
+    
     lat, lng = float(clickData['latlng']['lat']), float(clickData['latlng']['lng'])
     radius_meters = radius * 1609.34  # Convert miles to meters
     utm_epsg = util.get_utm_epsg(lat, lng)

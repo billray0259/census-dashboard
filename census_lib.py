@@ -62,6 +62,10 @@ def fetch_census_data(group_name, ucgid_list):
     Returns:
     - pd.DataFrame: A DataFrame containing the retrieved data.
     """
+    if len(ucgid_list) > 100:
+        chunks = [ucgid_list[i:i + 100] for i in range(0, len(ucgid_list), 100)]
+        return pd.concat([fetch_census_data(group_name, chunk) for chunk in chunks])
+    
     # Base URL for the Census API
     base_url = "https://api.census.gov/data/2022/acs/acs5"
 
