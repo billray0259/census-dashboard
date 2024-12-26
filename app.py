@@ -9,6 +9,8 @@ from shapely.geometry import Point
 import util
 import pandas as pd
 import census_lib as cl
+import json
+import numpy as np
 
 app = Flask(__name__)
 
@@ -21,6 +23,12 @@ states_gdf = gpd.read_file(shapefile_path)
 
 # Convert GeoDataFrame to GeoJSON format
 states_geojson = states_gdf.to_json()
+
+with open('data/2023_tables.json', 'r') as f:
+    tables_2023 = json.load(f)
+
+tables_2023_df = pd.DataFrame(tables_2023)
+tables_2023_embeddings = np.load('data/2023_table_embeddings.npy')
 
 # Define the layout of the Dash app
 dash_app.layout = dbc.Container(
@@ -67,6 +75,24 @@ dash_app.layout = dbc.Container(
         ),
         dbc.Row(
             dbc.Col(
+                dbc.InputGroup(
+                    [
+                        dbc.Input(id="table-search-input", placeholder="Search for a table..."),
+                        dbc.Button("Search", id="table-search-button", n_clicks=0)
+                    ],
+                    className="mt-3"
+                ),
+                width=12
+            )
+        ),
+        dbc.Row(
+            dbc.Col(
+                html.Div(id="search-output", className="text-center mt-3"),  # Change Div to DataTable
+                width=12
+            )
+        ),
+        dbc.Row(
+            dbc.Col(
                 dl.Map(
                     center={'lat': 40, 'lng': -100},  # Initial center of the map
                     zoom=4,             # Initial zoom level
@@ -107,6 +133,33 @@ dash_app.layout = dbc.Container(
     ],
     fluid=True,
 )
+
+@dash_app.callback(
+    Output("search-output", "children"),
+    Input("table-search-button", "n_clicks"),
+    State("table-search-input", "value")
+)
+def search_table(n_clicks, query):
+    if n_clicks > 0 and query:
+        query_embedding = util.embed([query])[0]
+        scores = np.dot(tables_2023_embeddings, query_embedding)
+        arg_sort = np.argsort(scores)[::-1][:8]
+        filtered_df = tables_2023_df.iloc[arg_sort]
+        return dash_table.DataTable(
+            columns=[{"name": i, "id": i} for i in filtered_df.columns],
+            data=filtered_df.to_dict('records'),
+            style_table={'overflowX': 'auto'},
+            style_cell={'textAlign': 'left'},
+            style_header={
+                'backgroundColor': 'rgb(30, 30, 30)',
+                'color': 'white'
+            },
+            style_data={
+                'backgroundColor': 'rgb(50, 50, 50)',
+                'color': 'white'
+            }
+        )
+    return dash.no_update
 
 @dash_app.callback(
     [Output("click-output", "children"),
