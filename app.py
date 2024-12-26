@@ -12,6 +12,9 @@ import census_lib as cl
 import json
 import numpy as np
 
+
+# Charlie Change
+
 app = Flask(__name__)
 
 # Initialize the Dash app with Bootstrap stylesheet
