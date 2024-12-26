@@ -297,14 +297,14 @@ def update_table_input(selected_rows, table_data, current_value):
     [Output("click-output", "children"),
      Output("circle-layer", "children")],  # New Output for data table
     [Input("map", "clickData"),
-     Input("radius-slider", "value"),
+     Input("radius-input", "value"),
      Input("unit-toggle", "value")],
 )
 def display_coordinates_and_state(clickData, radius, unit):
     click_output = "Click on the map to get coordinates."
     circle_layer = []
 
-    if clickData is not None:
+    if clickData is not None and radius is not None:
         lat, lng = float(clickData['latlng']['lat']), float(clickData['latlng']['lng'])
         radius_meters = radius * 1609.34 if unit == 'miles' else radius * 1000  # Convert to meters
         dl_circle = dl.Circle(center=(lat, lng), radius=radius_meters,  # Radius in meters

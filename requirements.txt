@@ -8,6 +8,7 @@ pandas
 numpy
 requests
 census
-zipfile
 python-dotenv
 openai
+pyshp
+pymongo
