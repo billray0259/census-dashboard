@@ -11,11 +11,13 @@ import pandas as pd
 import census_lib as cl
 import json
 import numpy as np
+from dash import callback_context
+from dash.exceptions import PreventUpdate
 
 app = Flask(__name__)
 
 # Initialize the Dash app with Bootstrap stylesheet
-dash_app = dash.Dash(__name__, server=app, url_base_pathname='/', external_stylesheets=[dbc.themes.BOOTSTRAP])
+dash_app = dash.Dash(__name__, server=app, url_base_pathname='/', external_stylesheets=[dbc.themes.SPACELAB])
 
 # Load the shapefile
 shapefile_path = 'data/shape-files/state/2023/tl_2023_us_state.shp'
@@ -35,71 +37,131 @@ dash_app.layout = dbc.Container(
     [
         dbc.Row(
             dbc.Col(
-                html.H1("Census Dashboard", className="text-center"),
+                html.H1(
+                    [
+                        "Census Dashboard",
+                        
+                    ],
+                    className="text-center"
+                ),
                 width=12
             )
         ),
         dbc.Row(
-            [
-                dbc.Col(
-                    html.Div(
+            dbc.Col([
+                dbc.Button(
+                    'Help',
+                    id="open-help-button",
+                    color="link",
+                    className="ml-2",
+                    style={"fontSize": "1.5rem"}
+                ),
+                dbc.Collapse(
+                    dbc.Card(
+                        dbc.CardBody(
+                            [
+                                html.H4("How to Use the App", className="card-title"),
+                                html.Ol(
+                                    [
+                                        html.Li("Search or enter table codes."),
+                                        html.Li("Click on the map to select an area of interest."),
+                                        html.Li("Adjust the radius as needed."),
+                                        html.Li("Give your area a name."),
+                                        html.Li("Click 'Add Point' to add the area to your query."),
+                                        html.Li("Click 'Get Data'."),
+                                        html.Li("Click 'Download Data' to export the results table as a csv file.")
+                                    ]
+                                ),
+                                dbc.Button("Close", id="close-help-button", color="secondary", className="mt-3")
+                            ]
+                        ),
+                        className="mb-3"
+                    ),
+                    id="help-panel",
+                    is_open=True
+                ),
+                ],
+                width=12
+            )
+        ),
+        dbc.Row([
+            dbc.Col(
+                dbc.Card(
+                    dbc.CardBody(
                         [
+                            html.H4("Table Codes", className="card-title"),
                             html.P("Enter table codes (comma-separated):"),
                             dbc.Input(
                                 id='table-input',
                                 type='text',
-                                value='B01001,B01002',
                                 placeholder='e.g. B01001,B01002',
                                 className='mb-3'
                             ),
-                            html.P("Point of Interest Name:"),
-                            dbc.Input(
-                                id='poi-name-input',
-                                type='text',
-                                value='My Point',
-                                placeholder='Enter a name for your point',
-                                className='mb-3'
+                            dbc.InputGroup(
+                                [
+                                    dbc.Input(id="table-search-input", placeholder="Search for a table..."),
+                                    dbc.Button("Search", id="table-search-button", n_clicks=0)
+                                ],
+                                className="mb-3"
                             ),
-                            dbc.Button("Add Point", id="add-point-button", color="primary", className="mr-2"),
-                            dbc.Button("Remove Last Point", id="remove-point-button", color="danger", className="ml-2"),
+                            html.H4("Points of Interest", className="card-title"),
+                            html.P("Point of Interest Name:"),
+                            dbc.InputGroup(
+                                [
+                                    dbc.Input(
+                                        id='poi-name-input',
+                                        type='text',
+                                        placeholder='Enter a name for your point',
+                                    ),
+                                    dbc.Button("Add Point", id="add-point-button", color="primary")
+                                ],
+                                className="mb-3"
+                            ),
+                            html.H4("Points of Interest List", className="card-title"),
+                            html.Ul(id='points-list', className='list-group'),
+                            html.H4("Radius", className="card-title mt-3"),
+                            dbc.InputGroup(
+                                [
+                                    html.Div(
+                                        dcc.Slider(
+                                            id='radius-slider',
+                                            min=1,
+                                            max=15,
+                                            value=5,
+                                            step=1,
+                                            marks={i: f'{i}' for i in range(1, 16, 2)},
+                                            tooltip={"placement": "bottom"},
+                                            className="ml-3",
+                                        ),
+                                        style={'width': '70%'}  # Allocate 70% width to the slider
+                                    ),
+                                    dbc.Input(
+                                        id='radius-input',
+                                        type='number',
+                                        min=0.1,
+                                        value=5,
+                                        style={'width': '10%'}  # Allocate 20% width to the input
+                                    ),
+                                    dbc.Select(
+                                        id='unit-toggle',
+                                        options=[
+                                            {'label': 'Miles', 'value': 'miles'},
+                                            {'label': 'Kilometers', 'value': 'km'}
+                                        ],
+                                        value='miles',
+                                        style={'width': '20%'}  # Allocate 10% width to the select
+                                    )
+                                ],
+                                className="d-flex align-items-center mt-3"  # Use flexbox for layout
+                            ),
+
+                            dbc.Button("Get Data", id="get-data-button", color="primary", className="mt-3"),
                         ]
                     ),
-                    width=4
+                    className="mb-3"
                 ),
-                dbc.Col(
-                    dcc.Slider(
-                        id='radius-slider',
-                        min=1,
-                        max=20,
-                        step=0.5,
-                        value=5,
-                        marks={i: f'{i} mi' for i in range(1, 21)},
-                        tooltip={"placement": "bottom", "always_visible": True},
-                        className="mt-4"
-                    ),
-                    width=8
-                ),
-            ]
-        ),
-        dbc.Row(
-            dbc.Col(
-                dbc.InputGroup(
-                    [
-                        dbc.Input(id="table-search-input", placeholder="Search for a table..."),
-                        dbc.Button("Search", id="table-search-button", n_clicks=0)
-                    ],
-                    className="mt-3"
-                ),
-                width=12
-            )
-        ),
-        dbc.Row(
-            dbc.Col(
-                dcc.Loading(html.Div(id="search-output", className="text-center mt-3")),  # Change Div to DataTable
-                width=12
-            )
-        ),
-        dbc.Row(
+                width=4
+            ),
             dbc.Col(
                 dl.Map(
                     center={'lat': 40, 'lng': -100},  # Initial center of the map
@@ -114,15 +176,28 @@ dash_app.layout = dbc.Container(
                     id="map",            # ID to reference in callbacks
                     style={'width': '100%', 'height': '50vh'}
                 ),
-                width=12,
+                width=8,
                 className="mt-3 mb-3"
             )
-        ),
+        ]),
         dbc.Row(
             dbc.Col(
-                dbc.Button("Get Data", id="get-data-button", color="primary", className="mt-3"),  # New Button
-                width=12,
-                className="text-center"
+                dcc.Loading(dash_table.DataTable(
+                    id="search-output-table",
+                    style_table={'overflowX': 'auto'},
+                    style_cell={'textAlign': 'left'},
+                    style_header={
+                        'backgroundColor': 'rgb(30, 30, 30)',
+                        'color': 'white'
+                    },
+                    style_data={
+                        'backgroundColor': 'rgb(50, 50, 50)',
+                        'color': 'white'
+                    },
+                    row_selectable='multi',  # Allow multiple rows to be selected
+                    selected_rows=[]
+                )),  # Change Div to DataTable
+                width=12
             )
         ),
         dbc.Row(
@@ -156,12 +231,25 @@ dash_app.layout = dbc.Container(
         dcc.Store(id="state-storage"),  # Store object to store state
         dcc.Store(id="table-data-storage"),
         dcc.Store(id="points-store", data=[]),   # List of points of interest
+        dcc.Store(id="search-output"),  # Store for search results
     ],
     fluid=True,
 )
 
 @dash_app.callback(
-    Output("search-output", "children"),
+    [Output("help-panel", "is_open"), Output("open-help-button", "style")],
+    [Input("open-help-button", "n_clicks"), Input("close-help-button", "n_clicks")],
+    [State("help-panel", "is_open")]
+)
+def toggle_help_panel(open_clicks, close_clicks, is_open):
+    if open_clicks or close_clicks:
+        is_open = not is_open
+    button_style = {"display": "none"} if is_open else {"fontSize": "1.5rem"}
+    return is_open, button_style
+
+@dash_app.callback(
+    Output("search-output", "data"),
+    Output("search-output-table", "selected_rows"),
     Input("table-search-button", "n_clicks"),
     State("table-search-input", "value")
 )
@@ -171,42 +259,60 @@ def search_table(n_clicks, query):
         scores = np.dot(tables_2023_embeddings, query_embedding)
         arg_sort = np.argsort(scores)[::-1][:8]
         filtered_df = tables_2023_df.iloc[arg_sort]
-        return dash_table.DataTable(
-            columns=[{"name": i, "id": i} for i in filtered_df.columns],
-            data=filtered_df.to_dict('records'),
-            style_table={'overflowX': 'auto'},
-            style_cell={'textAlign': 'left'},
-            style_header={
-                'backgroundColor': 'rgb(30, 30, 30)',
-                'color': 'white'
-            },
-            style_data={
-                'backgroundColor': 'rgb(50, 50, 50)',
-                'color': 'white'
-            }
-        )
-    return dash.no_update
+        return filtered_df.to_dict('records'), []
+    return [], []
+
+@dash_app.callback(
+    Output("search-output-table", "data"),
+    Output("search-output-table", "columns"),
+    Input("search-output", "data")
+)
+def update_search_output_table(data):
+    if data:
+        columns = [{"name": i, "id": i} for i in data[0].keys()]
+        return data, columns
+    return [], []
+
+@dash_app.callback(
+    Output("table-input", "value"),
+    Input("search-output-table", "derived_virtual_selected_rows"),
+    State("search-output-table", "data"),
+    State("table-input", "value")
+)
+def update_table_input(selected_rows, table_data, current_value):
+    print('selected_rows:', selected_rows)
+    if selected_rows is None or table_data is None:
+        return current_value
+
+    if current_value is None:
+        current_value = ''
+
+    selected_table_codes = [table_data[i]['name'] for i in selected_rows]
+    current_table_codes = [code.strip() for code in current_value.split(',') if code.strip()]
+    updated_table_codes = list(set(current_table_codes + selected_table_codes))
+
+    return ','.join(updated_table_codes)
 
 @dash_app.callback(
     [Output("click-output", "children"),
      Output("circle-layer", "children")],  # New Output for data table
     [Input("map", "clickData"),
-     Input("radius-slider", "value")],
+     Input("radius-slider", "value"),
+     Input("unit-toggle", "value")],
 )
-def display_coordinates_and_state(clickData, radius):
+def display_coordinates_and_state(clickData, radius, unit):
     click_output = "Click on the map to get coordinates."
     circle_layer = []
 
     if clickData is not None:
         lat, lng = float(clickData['latlng']['lat']), float(clickData['latlng']['lng'])
-        radius_meters = radius * 1609.34  # Convert miles to meters
+        radius_meters = radius * 1609.34 if unit == 'miles' else radius * 1000  # Convert to meters
         dl_circle = dl.Circle(center=(lat, lng), radius=radius_meters,  # Radius in meters
                            color='red', fill=True, fillOpacity=0)
         circle_layer = [dl_circle]
         click_output = f"Latitude: {lat:.6f}, Longitude: {lng:.6f}"
         
     return click_output, circle_layer
-
 
 def make_geo_circle(lat, lng, radius_meters):
     utm_epsg = util.get_utm_epsg(lat, lng)
@@ -219,70 +325,70 @@ def make_geo_circle(lat, lng, radius_meters):
     
     return circle
 
-
+# Add a new combined callback to handle adding, saving, and removing points
 @dash_app.callback(
-    Output("points-store", "data"),
-    [Input("add-point-button", "n_clicks"),
-     Input("remove-point-button", "n_clicks")],
+    Output('points-store', 'data'),
     [
-        State("points-store", "data"),
-        State("poi-name-input", "value"),
-        State("map", "clickData")
+        Input('add-point-button', 'n_clicks'),
+        Input({'type': 'save-point-button', 'index': dash.dependencies.ALL}, 'n_clicks'),
+        Input({'type': 'remove-point-button', 'index': dash.dependencies.ALL}, 'n_clicks')
+    ],
+    [
+        State('points-store', 'data'),
+        State('poi-name-input', 'value'),
+        State('map', 'clickData'),
+        State('radius-slider', 'value'),  # Add radius state
+        State('unit-toggle', 'value'),  # Add unit state
+        State({'type': 'point-name-input', 'index': dash.dependencies.ALL}, 'value'),
+        State({'type': 'remove-point-button', 'index': dash.dependencies.ALL}, 'id')
     ],
     prevent_initial_call=True
 )
-def update_points(add_clicks, remove_clicks, points, point_name, clickData):
-    """
-    - Add a new point with the name from poi-name-input if Add is clicked
-      and if there's a recent map click.
-    - Remove the last point if Remove is clicked.
-    - 'points' is a list of dicts: [{'name':..., 'lat':..., 'lng':...}, ...].
-    """
-    ctx = dash.callback_context
+def handle_points(add_clicks, save_clicks, remove_point_clicks, points, point_name, clickData, radius, unit, names, remove_ids):
+    ctx = callback_context
     if not ctx.triggered:
-        return points  # No change
-    
-    # Check which button was triggered
-    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
-    
+        return points
+
+    triggered = ctx.triggered[0]
+    triggered_id = triggered['prop_id'].split('.')[0]
+
     if triggered_id == 'add-point-button':
-        # Add a new point if we have valid click data
         if clickData:
             lat = float(clickData['latlng']['lat'])
             lng = float(clickData['latlng']['lng'])
+            radius_meters = radius * 1609.34 if unit == 'miles' else radius * 1000  # Convert to meters
             new_point = {
                 'name': point_name.strip() if point_name else f"Point {len(points)+1}",
                 'lat': lat,
-                'lng': lng
+                'lng': lng,
+                'radius': radius_meters  # Store radius in meters
             }
             points.append(new_point)
-        return points
-
-    elif triggered_id == 'remove-point-button':
-        # Remove the last point
-        if len(points) > 0:
-            points.pop()
-        return points
-
+    else:
+        button_id = json.loads(triggered_id)
+        if button_id['type'] == 'save-point-button':
+            index = button_id['index']
+            if names[index]:
+                points[index]['name'] = names[index].strip()
+                radius_meters = radius * 1609.34 if unit == 'miles' else radius * 1000  # Convert to meters
+                points[index]['radius'] = radius_meters  # Update radius in meters
+        elif button_id['type'] == 'remove-point-button':
+            index = button_id['index']
+            if 0 <= index < len(points):
+                points.pop(index)
     return points
 
 @dash_app.callback(
     Output("prev-circle-layer", "children"),
-    [Input("points-store", "data"),
-     Input("radius-slider", "value")],
+    [Input("points-store", "data")],
 )
-def update_circles_layer(points, radius):
-    """
-    Draw a circle for each point in 'points-store'.
-    """
+def update_circles_layer(points):
     circle_layer = []
-    radius_meters = radius * 1609.34
-    
     for p in points:
         circle_layer.append(
             dl.Circle(
                 center=(p['lat'], p['lng']),
-                radius=radius_meters,
+                radius=p['radius'],  # Radius is already in meters
                 color='green', 
                 fill=True, 
                 fillOpacity=0.1
@@ -299,12 +405,11 @@ def update_circles_layer(points, radius):
     [Input("get-data-button", "n_clicks")],
     [
         State("points-store", "data"),
-        State("radius-slider", "value"),
         State("table-input", "value")
     ],
     prevent_initial_call=True
 )
-def search_census(_, points, radius, table_codes_input):
+def search_census(_, points, table_codes_input):
     if not points:
         return html.Div("No points defined."), []
 
@@ -318,7 +423,7 @@ def search_census(_, points, radius, table_codes_input):
 
     for p in points:
         lat, lng = float(p['lat']), float(p['lng'])
-        radius_meters = radius * 1609.34  # Convert miles to meters
+        radius_meters = p['radius']  # Radius is already in meters
         utm_epsg = util.get_utm_epsg(lat, lng)
     
         point = Point(lng, lat)
@@ -425,6 +530,64 @@ def download_data(n_clicks, table_data):
     
     # Use dcc.send_data_frame to send CSV
     return dcc.send_data_frame(df.to_csv, "census_data.csv", index=False)
+
+# Callback to display the list of points with edit and remove buttons
+@dash_app.callback(
+    Output('points-list', 'children'),
+    Input('points-store', 'data')
+)
+def display_points(points):
+    return [
+        dbc.InputGroup(
+            [
+                dbc.Input(
+                    id={'type': 'point-name-input', 'index': i},
+                    type='text',
+                    value=point['name'],
+                ),
+                dbc.Button(
+                    "Save",
+                    id={'type': 'save-point-button', 'index': i},
+                    color="primary",
+                    size="sm",
+                ),
+                dbc.Button(
+                    "Remove",
+                    id={'type': 'remove-point-button', 'index': i},
+                    color="danger",
+                    size="sm"
+                )
+            ],
+            className='list-group-item d-flex align-items-center'
+        )
+        for i, point in enumerate(points)
+    ]
+
+@dash_app.callback(
+    Output('radius-slider', 'value'),
+    Output('radius-input', 'value'),
+    Output('radius-slider', 'max'),
+    Output('radius-slider', 'marks'),
+    Input('radius-slider', 'value'),
+    Input('radius-input', 'value'),
+    Input('unit-toggle', 'value')
+)
+def sync_radius_inputs(slider_value, input_value, unit):
+    ctx = callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+
+    max_value = 15 if unit == 'miles' else 25
+    marks = {i: f'{i}' for i in range(1, max_value + 1, 2)}
+
+    triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    if triggered_id == 'radius-slider':
+        return slider_value, slider_value, max_value, marks
+    elif triggered_id == 'radius-input':
+        return input_value, input_value, max_value, marks
+    elif triggered_id == 'unit-toggle':
+        return slider_value, slider_value, max_value, marks
+    raise PreventUpdate
 
 if __name__ == "__main__":
     app.run(debug=True)
