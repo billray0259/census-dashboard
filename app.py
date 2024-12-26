@@ -12,9 +12,6 @@ import census_lib as cl
 import json
 import numpy as np
 
-
-# Charlie Change
-
 app = Flask(__name__)
 
 # Initialize the Dash app with Bootstrap stylesheet
@@ -234,14 +231,11 @@ def display_coordinates_and_state(clickData, radius, table_code, center, zoom, s
         
         block_group_gdf = block_group_gdf[block_group_gdf['percent_overlap'] > 0]
         
-        print(f'Number of block groups: {len(block_group_gdf)}')
+        print(block_group_gdf.head())
         data_df = cl.aggregate_blockgroups(table_code, block_group_gdf)  # Use table_code from input
-        print(f'Number of rows in data_df: {len(data_df)}')
+        
         # format data_df['Value'] as comma-separated integers
         data_df['Value'] = data_df['Value'].apply(lambda x: f'{round(x):,}' if pd.notna(x) else '')
-        
-        # remove rows where not VarID.endswith('E')
-        data_df = data_df[data_df['VarID'].str.endswith('E')]
         
         # Create a DataTable from the dataframe
         data_table = dash_table.DataTable(
