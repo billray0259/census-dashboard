@@ -5,7 +5,7 @@ def parse_requirements(filename):
         return file.read().splitlines()
 
 setup(
-    name='census-dashboard',
+    name='census_dashboard',
     version='0.1.0',
     packages=find_packages(),
     include_package_data=True,
