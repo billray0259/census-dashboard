@@ -1,0 +1,1 @@
+from census_dashboard.app import create_dash_app

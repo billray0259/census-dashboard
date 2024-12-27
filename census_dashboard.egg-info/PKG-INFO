@@ -1,0 +1,17 @@
+Metadata-Version: 2.1
+Name: census_dashboard
+Version: 0.1.0
+Requires-Dist: flask
+Requires-Dist: dash
+Requires-Dist: dash-bootstrap-components
+Requires-Dist: dash-leaflet
+Requires-Dist: geopandas
+Requires-Dist: shapely
+Requires-Dist: pandas
+Requires-Dist: numpy
+Requires-Dist: requests
+Requires-Dist: census
+Requires-Dist: python-dotenv
+Requires-Dist: openai
+Requires-Dist: pyshp
+Requires-Dist: pymongo
