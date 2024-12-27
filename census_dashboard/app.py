@@ -6,10 +6,10 @@ from dash.dependencies import Input, Output, State
 import dash_leaflet as dl
 import geopandas as gpd
 from shapely.geometry import Point, shape
-import censusdashboard.util as util
+import census_dashboard.util as util
 import base64
 import pandas as pd
-import censusdashboard.census_lib as cl
+import census_dashboard.census_lib as cl
 import json
 import numpy as np
 from dash import callback_context
