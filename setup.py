@@ -5,14 +5,9 @@ def parse_requirements(filename):
         return file.read().splitlines()
 
 setup(
-    name='census_dashboard',  # Ensure this matches the directory name and import statement
+    name='census-dashboard',
     version='0.1.0',
-    packages=find_packages(),
+    packages=find_packages(),  # This should detect 'census_dashboard'
     include_package_data=True,
-    install_requires=parse_requirements('requirements.txt'),
-    entry_points={
-        'console_scripts': [
-            'census-dashboard=app:main',
-        ],
-    },
+    install_requires=parse_requirements('requirements.txt')
 )
