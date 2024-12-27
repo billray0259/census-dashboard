@@ -14,6 +14,7 @@ import json
 import numpy as np
 from dash import callback_context
 from dash.exceptions import PreventUpdate
+from geopy.geocoders import Nominatim
 
 app = Flask(__name__)
 
@@ -28,6 +29,8 @@ states_gdf = gpd.read_file(shapefile_path)
 states_geojson = states_gdf.to_json()
 # 5 miles
 DEFAULT_RADIUS = 5 * 1609.34
+
+geolocator = Nominatim(user_agent="census-dashboard")
 
 with open('data/2023_tables.json', 'r') as f:
     tables_2023 = json.load(f)
@@ -112,6 +115,14 @@ dash_app.layout = dbc.Container(
                                 ],
                                 className="mb-3"
                             ),
+                            html.H4("Address Search", className="card-title"),
+                            dbc.InputGroup(
+                                [
+                                    dbc.Input(id="address-search-input", placeholder="Search for an address..."),
+                                    dbc.Button("Search", id="address-search-button", n_clicks=0)
+                                ],
+                                className="mb-3"
+                            ),
                             html.H4("Points of Interest", className="card-title"),
                             html.P("Point of Interest Name:"),
                             dbc.InputGroup(
@@ -190,8 +201,9 @@ dash_app.layout = dbc.Container(
             ),
             dbc.Col(
                 dl.Map(
-                    center={'lat': 40, 'lng': -100},  # Initial center of the map
-                    zoom=4,             # Initial zoom level
+                    center = [40, -100],  # Initial center of the map
+                    zoom = 4,  # Initial zoom level
+                    viewport={"center": [40, -100], "zoom": 4},  # Initial center of the map
                     children=[
                         dl.TileLayer(),  # Base layer
                         dl.GeoJSON(data=states_geojson, id="state-polygons"),  # State polygons
@@ -318,6 +330,26 @@ def update_table_input(selected_rows, table_data, current_value):
     updated_table_codes = list(set(current_table_codes + selected_table_codes))
 
     return ','.join(updated_table_codes)
+
+# Callback to geocode the address the user inputs, and zoom map to location
+@dash_app.callback(
+    Output("map", "viewport"),
+    Input("address-search-button", "n_clicks"),
+    State("address-search-input", "value"),
+    prevent_initial_call=True
+)
+def geocode_address(n_clicks, address):
+    if n_clicks is None:
+        raise PreventUpdate
+
+    location = geolocator.geocode(address)
+    if location is None:
+        return dash.no_update
+
+    new_center = [location.latitude, location.longitude]
+    # Return a dict with both center and zoom
+    return {"center": new_center, "zoom": 16}
+
 
 @dash_app.callback(
     [Output("click-output", "children"),
