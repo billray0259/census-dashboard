@@ -38,30 +38,54 @@ def find_intersecting_features(database_name, collection_name, geojson):
     client = MongoClient(os.getenv('MONGODB_URI'))
     db = client[database_name]
     collection = db[collection_name]
-    print('Connected to MongoDB')
     
     # Perform the geospatial query using $geoIntersects
-    try:
-        intersecting_documents = collection.find(
-            {
-                "geometry": {
-                    "$geoIntersects": {
-                        "$geometry": geojson
-                    }
-                },
-                "properties.GEOID": "08"  # Add this condition to filter by GEOID
-            }, {
-                "_id": 1,
-                "properties": 1
+    intersecting_documents = collection.find(
+        {
+            "geometry": {
+                "$geoIntersects": {
+                    "$geometry": geojson
+                }
             }
-        )
-        # combine into one dict
-        intersecting_documents = [{'_id': doc['_id'], **doc['properties']} for doc in intersecting_documents]
-    except Exception as e:
-        print(str(e)[:1000])
-        return None
-    
-    # # Collect intersecting results
+        }
+    )
+    # Collect intersecting results
     results = list(intersecting_documents)
     
+    return results
+
+
+def semantic_search_2023_tables(query, k=10):
+    # Connect to MongoDB Atlas
+    client = MongoClient(os.getenv('ATLAS_URI'))
+    db = client['census-dashboard']
+    collection = db['2023-tables']
+
+    # Compute the query embedding
+    query_embedding = embed(query)[0].tolist()  # Replace with your embedding function
+
+    # Perform the vector search
+    # return name description variables universe
+    pipeline = [
+        {
+            '$vectorSearch': {
+                'index': 'default',
+                'path': 'embedding',
+                'queryVector': query_embedding,
+                'numCandidates': 150,
+                'limit': k
+            }
+        },
+        {
+            '$project': {
+                'name': 1,
+                'description': 1,
+                'variables': 1,
+                'universe': 1,
+                'score': {'$meta': 'searchScore'}
+            }
+        }
+    ]
+
+    results = list(collection.aggregate(pipeline))
     return results

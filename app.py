@@ -5,7 +5,7 @@ from dash import html, dcc, dash_table
 from dash.dependencies import Input, Output, State
 import dash_leaflet as dl
 import geopandas as gpd
-from shapely.geometry import Point
+from shapely.geometry import Point, shape
 import util
 import base64
 import pandas as pd
@@ -20,20 +20,8 @@ app = Flask(__name__)
 # Initialize the Dash app with Bootstrap stylesheet
 dash_app = dash.Dash(__name__, server=app, url_base_pathname='/', external_stylesheets=[dbc.themes.SPACELAB])
 
-# Load the shapefile
-shapefile_path = 'data/shape-files/state/2023/tl_2023_us_state.shp'
-states_gdf = gpd.read_file(shapefile_path)
-
-# Convert GeoDataFrame to GeoJSON format
-states_geojson = states_gdf.to_json()
 # 5 miles
 DEFAULT_RADIUS = 5 * 1609.34
-
-with open('data/2023_tables.json', 'r') as f:
-    tables_2023 = json.load(f)
-
-tables_2023_df = pd.DataFrame(tables_2023)
-tables_2023_embeddings = np.load('data/2023_table_embeddings.npy')
 
 BLANK_GEOJSON = {
     "type": "FeatureCollection",
@@ -194,7 +182,6 @@ dash_app.layout = dbc.Container(
                     zoom=4,             # Initial zoom level
                     children=[
                         dl.TileLayer(),  # Base layer
-                        dl.GeoJSON(data=states_geojson, id="state-polygons"),  # State polygons
                         dl.LayerGroup(id="circle-layer"),  # Layer group for the circle
                         dl.LayerGroup(id="prev-circle-layer"),  # Layer group for the circle
                         dl.LayerGroup(id="highlight-layer")  # Layer group for the highlighted state
@@ -281,11 +268,10 @@ def toggle_help_panel(open_clicks, close_clicks, is_open):
 )
 def search_table(n_clicks, query):
     if n_clicks > 0 and query:
-        query_embedding = util.embed([query])[0]
-        scores = np.dot(tables_2023_embeddings, query_embedding)
-        arg_sort = np.argsort(scores)[::-1][:8]
-        filtered_df = tables_2023_df.iloc[arg_sort]
-        return filtered_df.to_dict('records'), []
+        results = util.semantic_search_2023_tables(query)
+        results = pd.DataFrame(results)
+        results.drop(columns=['_id'], inplace=True)
+        return results.to_dict('records'), []
     return [], []
 
 @dash_app.callback(
@@ -518,24 +504,23 @@ def search_census(_, geo_json_data, table_codes_input):
         # Create a circle around the click point with the selected radius
         circle = projected_point.buffer(radius_meters)  # Radius in meters
         
-        projected_states_gdf = states_gdf.to_crs(epsg=utm_epsg)
-        intersecting_states = projected_states_gdf[projected_states_gdf.intersects(circle)]
-        
-        block_group_shapefile_paths = [
-            f'data/shape-files/block-group/2023/tl_2023_{state_fp}_bg.shp'
-            for state_fp in intersecting_states['STATEFP']
-        ]
-        
-        if not block_group_shapefile_paths:
-            return data_table, highlight_layer
-        
-        # read all and concatenate
-        block_group_gdf = gpd.GeoDataFrame()
-        for path in block_group_shapefile_paths:
-            block_group_gdf = pd.concat([block_group_gdf, gpd.read_file(path)])
+        print('Querying MongoDB')
+
+        query_circle = gpd.GeoSeries([point], crs=4326).to_crs(epsg=utm_epsg).buffer(radius_meters).to_crs(epsg=4326).iloc[0].__geo_interface__
+        db_results = util.find_intersecting_features('census-dashboard', 'block-group-geojson', query_circle)
+        print(db_results[0].keys())
+        db_results = [{'geometry': doc['geometry'], **doc['properties']} for doc in db_results]
+        print(f'Number of block groups: {len(db_results)}')
+        print(db_results[0].keys())
+        db_results = pd.DataFrame(db_results)
+        db_results['geometry'] = db_results['geometry'].apply(shape)
+        block_group_gdf = gpd.GeoDataFrame(db_results)
+        block_group_gdf.set_geometry('geometry')
+        block_group_gdf = block_group_gdf.set_crs("EPSG:4326")  # Adjust if your CRS is different
         
         projected_gdf = block_group_gdf.to_crs(epsg=utm_epsg)
         projected_gdf['distance'] = projected_gdf.centroid.distance(projected_point)
+        
             
         # Convert to appropriate CRS before converting to GeoJSON
         block_group_gdf = block_group_gdf.to_crs(epsg=4326)
@@ -551,6 +536,7 @@ def search_census(_, geo_json_data, table_codes_input):
         
         print(f'Number of block groups: {len(block_group_gdf)}')
         for table_code in table_codes:
+            print(block_group_gdf)
             data_df = cl.aggregate_blockgroups(table_code, block_group_gdf)  # Use table_code from input
             data_df["Value"] = data_df["Value"].apply(lambda x: f"{round(x):,}" if pd.notna(x) else "")
             data_df = data_df[data_df["VarID"].str.endswith("E")]
