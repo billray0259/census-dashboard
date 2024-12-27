@@ -1,5 +1,5 @@
 import dotenv
-dotenv.load_dotenv()
+dotenv.load_dotenv('.env')
 import os
 from census import Census
 import numpy as np
