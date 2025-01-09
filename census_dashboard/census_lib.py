@@ -1,7 +1,6 @@
 import dotenv
 dotenv.load_dotenv('.env')
 import os
-from census import Census
 import numpy as np
 
 from openai import OpenAI
@@ -10,9 +9,6 @@ import requests
 import pandas as pd
 
 ai = OpenAI()
-census = Census(os.getenv('CENSUS_API_KEY'))
-acs5 = census.acs5
-
 
 
 def aggregate_blockgroups(table, block_group_gdf):
@@ -51,7 +47,7 @@ def aggregate_blockgroups(table, block_group_gdf):
 
 
 
-def fetch_census_data(group_name, ucgid_list):
+def fetch_census_data(group_name, ucgid_list, year=2023):
     """
     Fetches data from the U.S. Census Bureau API for a specified group and list of ucgids.
 
@@ -67,7 +63,7 @@ def fetch_census_data(group_name, ucgid_list):
         return pd.concat([fetch_census_data(group_name, chunk) for chunk in chunks])
     
     # Base URL for the Census API
-    base_url = "https://api.census.gov/data/2022/acs/acs5"
+    base_url = f"https://api.census.gov/data/{year}/acs/acs5"
 
     # Convert the list of ucgids into a comma-separated string
     ucgid_str = ",".join(ucgid_list)
@@ -107,10 +103,8 @@ def variables(table, year=2023):
     Returns a list of the variables available from this source.
     """
     
-    variables_url = 'https://api.census.gov/data/%s/acs/acs5/groups/%s.json'
-
-    # Query the table metadata as raw JSON
-    tables_url = variables_url % (str(year), table)
+    tables_url = f'https://api.census.gov/data/{year}/acs/acs5/groups/{table}.json'
+    
     params = {
         "key": os.getenv("CENSUS_API_KEY"),
     }

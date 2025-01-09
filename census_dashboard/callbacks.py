@@ -6,9 +6,8 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Point, shape
 from dash.dependencies import Input, Output, State, ALL
-from dash import dash_table, dcc, html, callback_context
+from dash import dash_table, dcc, html, callback_context, no_update
 from dash.exceptions import PreventUpdate
-import dash
 import dash_leaflet as dl
 import dash_bootstrap_components as dbc
 
@@ -343,7 +342,7 @@ def register_callbacks(app):
     )
     def download_data(n_clicks, table_data):
         if not table_data:
-            return dash.no_update
+            return no_update
         df = pd.DataFrame(table_data)
         return dcc.send_data_frame(df.to_csv, "census_data.csv", index=False)
 
